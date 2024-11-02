@@ -1,0 +1,86 @@
+% Load + Pré-processing
+img = im2double(imread("IMG_002.jpg"));
+
+% Best plane choice  
+G=img(:,:,2); 
+%figure; imshow(G);title ('Green Plane');
+stdimg=std2(G);
+if std2(G) < 0.25 
+ [n, m] = size(G);
+ img=rgb2hsv(img); 
+ S=img(:,:,2);
+ figure; imshow(S);title ('Saturation Plane');
+ V=img(:,:,3);
+ figure; imshow(V);title ('Brightness Plane');
+ for i=1:n
+  for j=1:m
+   I=0.9*S(i,j) + 0.3*V(i,j);
+   if I<1
+     G(i,j)=I;
+   else
+     G(i,j)=1;
+   end
+  end
+ end
+end
+plane=G;
+figure; imshow(plane);title('Chosen Plane'); 
+[r, c]=size(plane);
+
+%Artifact Removal 
+se = strel('disk',5); 
+plane = imclose(plane,se); % em quase todas os artigos que li eles fazem um closing no inicio
+figure;imshow(plane); title('Inicial Closing');
+plane= medfilt2(plane,[floor(5*sqrt((r/768)(c/512))) floor(5*sqrt((r/768)(c/512)))]); % Segundo o artigo [6]
+figure;imshow(plane); title('Median filter');
+
+% Segmentation K-means
+A=plane(:);
+[list, kcenters]=kmeans(double(A),2);
+img_shape=reshape(list,r,c);
+if stdimg >= 0.25
+img=~mat2gray(kcenters(img_shape));
+else
+
+        img=mat2gray(kcenters(img_shape));
+
+end
+
+figure;imshow(img); title('After K-means');
+
+
+%Post - Processing
+% Islands removal
+img=imopen(img,strel('disk',15));
+figure;imshow(img);title("Morpological Operations");
+[labeledImage, numberOfBlobs] = bwlabel(img);
+blobMeasurements = regionprops(labeledImage, 'area', 'Centroid');
+allAreas = [blobMeasurements.Area];
+img=bwareaopen(img,max(allAreas));
+figure;imshow(img);title("Islands removal");
+img=imclose(img,strel('disk',15));
+if img(floor(c/2),50)==1
+    img2=ones(r,c)-img;
+    figure;imshow(img2);title("Negative of The Image");
+ else 
+    img2=img;
+    img2=imfill(img2,'holes');
+    figure;imshow(img2);title("Elimination of Holes"); 
+end
+
+
+
+% Measures to evaluate
+GT=logical(imread('IMG_002_segmentation.png')); % Load of the ground truth
+
+J=jaccard(img2,GT); % Calculation of Jaccard index
+DSC = dice(img2,GT); % Calculation of Dice coefficient
+
+TP=nnz(img2 & GT); % Calculation of True positives
+TN=nnz((~img2 )& (~GT)); % Calculation of True negatives
+FP=nnz(img2-GT); % Calculation of False positives
+FN=nnz(GT-img2); % Calculation of False negatives
+
+accuracy=(TP+TN)/(TP+TN+FP+FN); % Calculation of accuracy
+
+figure;imshow(img2);title("Final Image");
